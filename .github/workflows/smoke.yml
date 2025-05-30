@@ -55,7 +55,7 @@ jobs:
           python=${{ matrix.config.python }} \
           setuptools
 
-    - name: Build
+    - name: Build and wheel
       shell: bash
       run: |
         . $CONDA/etc/profile.d/conda.sh
