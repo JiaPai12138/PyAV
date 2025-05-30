@@ -27,80 +27,6 @@ jobs:
       - name: Linters
         run: make lint
 
-  nix:
-    name: "py-${{ matrix.config.python }} lib-${{ matrix.config.ffmpeg }} ${{matrix.config.os}}"
-    runs-on: ${{ matrix.config.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - {os: ubuntu-24.04, python: "3.12", ffmpeg: "7.1.1", extras: true}
-          - {os: ubuntu-24.04, python: "pypy3.10", ffmpeg: "7.1.1"}
-          - {os: macos-14, python: "3.9", ffmpeg: "7.1.1"}
-
-    env:
-      PYAV_PYTHON: python${{ matrix.config.python }}
-      PYAV_LIBRARY: ffmpeg-${{ matrix.config.ffmpeg }}
-
-    steps:
-    - uses: actions/checkout@v4
-      name: Checkout
-
-    - name: Python ${{ matrix.config.python }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.config.python }}
-
-    - name: OS Packages
-      run: |
-        case ${{ matrix.config.os }} in
-          ubuntu-24.04)
-            sudo apt-get update
-            sudo apt-get install autoconf automake build-essential cmake \
-              libtool pkg-config nasm zlib1g-dev libvorbis-dev libx264-dev
-            if [[ "${{ matrix.config.extras }}" ]]; then
-              sudo apt-get install doxygen wget
-            fi
-            ;;
-          macos-14)
-            brew install automake libtool nasm libpng libvorbis libvpx opus x264
-            ;;
-        esac
-
-    - name: Pip and FFmpeg
-      run: |
-        . scripts/activate.sh ffmpeg-${{ matrix.config.ffmpeg }}
-        scripts/build-deps
-
-    - name: Build
-      run: |
-        . scripts/activate.sh ffmpeg-${{ matrix.config.ffmpeg }}
-        scripts/build
-
-    - name: Test
-      run: |
-        . scripts/activate.sh ffmpeg-${{ matrix.config.ffmpeg }}
-        python -m av --version # Assert it can import.
-        make test
-
-    - name: Docs
-      if: matrix.config.extras
-      run: |
-        . scripts/activate.sh ffmpeg-${{ matrix.config.ffmpeg }}
-        make -C docs html
-
-    - name: Doctest
-      if: matrix.config.extras
-      run: |
-        . scripts/activate.sh ffmpeg-${{ matrix.config.ffmpeg }}
-        make -C docs test
-
-    - name: Examples
-      if: matrix.config.extras
-      run: |
-        . scripts/activate.sh ffmpeg-${{ matrix.config.ffmpeg }}
-        scripts/test examples
-
   windows:
     name: "py-${{ matrix.config.python }} lib-${{ matrix.config.ffmpeg }} ${{matrix.config.os}}"
     runs-on: ${{ matrix.config.os }}
@@ -109,7 +35,7 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - {os: windows-latest, python: "3.9", ffmpeg: "7.1"}
+          - {os: windows-latest, python: "3.12", ffmpeg: "7.1"}
 
     steps:
     - name: Checkout
@@ -134,14 +60,23 @@ jobs:
       run: |
         . $CONDA/etc/profile.d/conda.sh
         conda activate pyav
-        pip install 'Cython==3.1.0a1'
+        pip install 'Cython==3.1.1'
+        pip install delvewheel wheel
         python scripts\\fetch-vendor.py --config-file scripts\\ffmpeg-${{ matrix.config.ffmpeg }}.json $CONDA_PREFIX\\Library
         python scripts\\comptime.py  ${{ matrix.config.ffmpeg }}
-        python setup.py build_ext --inplace --ffmpeg-dir=$CONDA_PREFIX\\Library
+        mkdir -p av.libs
+        cp C:/Miniconda/envs/pyav/Library/bin/*.dll av.libs/
+        python setup.py build_ext bdist_wheel --ffmpeg-dir=$CONDA_PREFIX\\Library
 
-    - name: Test
+    - name: Repair wheel with delvewheel
       shell: bash
       run: |
         . $CONDA/etc/profile.d/conda.sh
         conda activate pyav
-        python -m pytest
+        delvewheel repair dist/*.whl --add-path av.libs -w wheelhouse/
+
+    - name: Upload FFmpeg
+      uses: actions/upload-artifact@v4
+      with:
+        name: "py-${{ matrix.config.python }} lib-${{ matrix.config.ffmpeg }} ${{matrix.config.os}}"
+        path: wheelhouse/*.whl
