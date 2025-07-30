@@ -1,0 +1,93 @@
+name: smoke
+on:
+  push:
+    branches: main
+    paths-ignore:
+      - '**.md'
+      - '**.rst'
+      - '**.txt'
+  pull_request:
+    branches: main
+    paths-ignore:
+      - '**.md'
+      - '**.rst'
+      - '**.txt'
+jobs:
+  style:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Linters
+        run: make lint
+
+  windows:
+    name: "py-${{ matrix.config.python }} lib-${{ matrix.config.ffmpeg }} ${{matrix.config.os}}"
+    runs-on: ${{ matrix.config.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {os: windows-latest, python: "3.12", ffmpeg: "7.1.1"}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Conda
+      shell: bash
+      run: |
+        . $CONDA/etc/profile.d/conda.sh
+        conda config --set always_yes true
+        conda config --add channels conda-forge
+        conda config --add channels scientific-python-nightly-wheels
+        conda create -q -n pyav \
+          numpy \
+          pillow \
+          pytest \
+          python=${{ matrix.config.python }} \
+          setuptools
+
+    - name: Build and wheel
+      shell: bash
+      run: |
+        . $CONDA/etc/profile.d/conda.sh
+        conda activate pyav
+        pip install 'Cython==3.1.2'
+        pip install delvewheel wheel
+        python scripts\\fetch-vendor.py --config-file scripts\\ffmpeg-${{ matrix.config.ffmpeg }}.json $CONDA_PREFIX\\Library
+        python scripts\\comptime.py  ${{ matrix.config.ffmpeg }}
+        mkdir -p av.libs
+        cp C:/Miniconda/envs/pyav/Library/bin/*.dll av.libs/
+        python setup.py build_ext bdist_wheel --ffmpeg-dir=$CONDA_PREFIX\\Library
+
+    - name: Repair wheel with delvewheel
+      shell: bash
+      run: |
+        . $CONDA/etc/profile.d/conda.sh
+        conda activate pyav
+        delvewheel repair dist/*.whl --add-path av.libs -w wheelhouse/
+
+    - name: Upload FFmpeg
+      uses: actions/upload-artifact@v4
+      with:
+        name: "py-${{ matrix.config.python }} lib-${{ matrix.config.ffmpeg }} ${{matrix.config.os}}"
+        path: wheelhouse/*.whl
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.run_number }}
+        name: Release ${{ github.run_number }}
+        draft: false
+        prerelease: false
+        files: wheelhouse/*.whl
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
