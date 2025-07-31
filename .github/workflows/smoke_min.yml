@@ -1,17 +1,8 @@
-name: smoke
+name: smoke_min
 on:
-  push:
-    branches: main
-    paths-ignore:
-      - '**.md'
-      - '**.rst'
-      - '**.txt'
-  pull_request:
-    branches: main
-    paths-ignore:
-      - '**.md'
-      - '**.rst'
-      - '**.txt'
+  release:
+    types: [published, edited]
+  workflow_dispatch:
 jobs:
   style:
     runs-on: ubuntu-24.04
@@ -84,8 +75,8 @@ jobs:
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ github.run_number }}
-        name: Release ${{ github.run_number }}
+        tag_name: ${{ github.event.release.tag_name }}
+        name: ${{ github.event.release.name }}
         draft: false
         prerelease: false
         files: wheelhouse/*.whl
