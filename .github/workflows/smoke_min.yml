@@ -20,8 +20,8 @@ jobs:
         run: make lint
 
   windows:
-    name: "py-${{ matrix.config.python }} lib-${{ matrix.config.ffmpeg }} ${{matrix.config.os}}"
-    runs-on: ${{ matrix.config.os }}
+    name: "py-${{ matrix.python }} lib-${{ matrix.ffmpeg }} ${{matrix.os}}"
+    runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
