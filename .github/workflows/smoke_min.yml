@@ -27,7 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest]
-        python: ["3.12", "3.13", "3.13t", "3.14", "3.14t"]
+        python: ["3.12", "3.13", "3.13t"]
         ffmpeg: ["min"]
 
     steps:
@@ -47,11 +47,12 @@ jobs:
     - name: Build
       shell: bash
       run: |
-        python scripts/fetch-vendor.py --config-file scripts/ffmpeg-${{ matrix.ffmpeg }}.json ${{ env.PYTHONPATH }}
+        mkdir -p library_ffmpeg
+        python scripts/fetch-vendor.py --config-file scripts/ffmpeg-${{ matrix.ffmpeg }}.json library_ffmpeg
         python scripts/comptime.py ${{ matrix.ffmpeg }}
         mkdir -p av.libs
-        cp $(python -c "import sysconfig; print(sysconfig.get_paths()['platlib'])")/../Library/bin/*.dll av.libs/ || true
-        python setup.py build_ext bdist_wheel --ffmpeg-dir=$(python -c "import sysconfig; print(sysconfig.get_paths()['platlib'])")/../Library
+        cp library_ffmpeg/bin/*.dll av.libs/ || true
+        python setup.py build_ext bdist_wheel --ffmpeg-dir=library_ffmpeg
 
     - name: Repair wheel with delvewheel
       run: |
