@@ -3,6 +3,7 @@ on:
   release:
     types: [published, edited]
   workflow_dispatch:
+
 jobs:
   style:
     runs-on: ubuntu-24.04
@@ -25,54 +26,45 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        config:
-          - {os: windows-latest, python: "3.12", ffmpeg: "7.1.1"}
+        os: [windows-latest]
+        python: ["3.12", "3.13", "3.13t", "3.14", "3.14t"]
+        ffmpeg: ["min"]
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
-    - name: Set up Conda
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install numpy pillow pytest setuptools wheel Cython delvewheel
+
+    - name: Build
       shell: bash
       run: |
-        . $CONDA/etc/profile.d/conda.sh
-        conda config --set always_yes true
-        conda config --add channels conda-forge
-        conda config --add channels scientific-python-nightly-wheels
-        conda create -q -n pyav \
-          numpy \
-          pillow \
-          pytest \
-          python=${{ matrix.config.python }} \
-          setuptools
-
-    - name: Build and wheel
-      shell: bash
-      run: |
-        . $CONDA/etc/profile.d/conda.sh
-        conda activate pyav
-        pip install 'Cython==3.1.2'
-        pip install delvewheel wheel
-        python scripts\\fetch-vendor.py --config-file scripts\\ffmpeg-${{ matrix.config.ffmpeg }}.json $CONDA_PREFIX\\Library
-        python scripts\\comptime.py  ${{ matrix.config.ffmpeg }}
+        python scripts/fetch-vendor.py --config-file scripts/ffmpeg-${{ matrix.ffmpeg }}.json ${{ env.PYTHONPATH }}
+        python scripts/comptime.py ${{ matrix.ffmpeg }}
         mkdir -p av.libs
-        cp C:/Miniconda/envs/pyav/Library/bin/*.dll av.libs/
-        python setup.py build_ext bdist_wheel --ffmpeg-dir=$CONDA_PREFIX\\Library
+        cp $(python -c "import sysconfig; print(sysconfig.get_paths()['platlib'])")/../Library/bin/*.dll av.libs/ || true
+        python setup.py build_ext bdist_wheel --ffmpeg-dir=$(python -c "import sysconfig; print(sysconfig.get_paths()['platlib'])")/../Library
 
     - name: Repair wheel with delvewheel
-      shell: bash
       run: |
-        . $CONDA/etc/profile.d/conda.sh
-        conda activate pyav
         delvewheel repair dist/*.whl --add-path av.libs -w wheelhouse/
 
     - name: Upload FFmpeg
       uses: actions/upload-artifact@v4
       with:
-        name: "py-${{ matrix.config.python }} lib-${{ matrix.config.ffmpeg }} ${{matrix.config.os}}"
+        name: "py-${{ matrix.python }} lib-${{ matrix.ffmpeg }} ${{ matrix.os }}"
         path: wheelhouse/*.whl
 
     - name: Create GitHub Release
+      if: github.event_name == 'release'
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ github.event.release.tag_name }}
