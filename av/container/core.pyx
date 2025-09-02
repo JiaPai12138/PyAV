@@ -15,7 +15,7 @@ from av.container.output cimport OutputContainer
 from av.container.pyio cimport pyio_close_custom_gil, pyio_close_gil
 from av.error cimport err_check, stash_exception
 from av.format cimport build_container_format
-from av.utils cimport avdict_to_dict
+from av.utils cimport avdict_to_dict, avrational_to_fraction
 
 from av.dictionary import Dictionary
 from av.logging import Capture as LogCapture
@@ -130,7 +130,7 @@ class Flags(Flag):
     non_block: "Do not block when reading packets from input." = lib.AVFMT_FLAG_NONBLOCK
     ign_dts: "Ignore DTS on frames that contain both DTS & PTS." = lib.AVFMT_FLAG_IGNDTS
     no_fillin: "Do not infer any values from other values, just return what is stored in the container." = lib.AVFMT_FLAG_NOFILLIN
-    no_parse: "Do not use AVParsers, you also must set AVFMT_FLAG_NOFILLIN as the fillin code works on frames and no parsing -> no frames. Also seeking to frames can not work if parsing to find frame boundaries has been disabled." = lib.AVFMT_FLAG_NOPARSE
+    no_parse: "Do not use AVParsers, you also must set AVFMT_FLAG_NOFILLIN as the fill in code works on frames and no parsing -> no frames. Also seeking to frames can not work if parsing to find frame boundaries has been disabled." = lib.AVFMT_FLAG_NOPARSE
     no_buffer: "Do not buffer frames when possible." = lib.AVFMT_FLAG_NOBUFFER
     custom_io: "The caller has supplied a custom AVIOContext, don't avio_close() it." = lib.AVFMT_FLAG_CUSTOM_IO
     discard_corrupt: "Discard frames marked corrupted." = lib.AVFMT_FLAG_DISCARD_CORRUPT
@@ -329,6 +329,22 @@ cdef class Container:
     def flags(self, int value):
         self._assert_open()
         self.ptr.flags = value
+
+    def chapters(self):
+        self._assert_open()
+        cdef list result = []
+        cdef int i
+
+        for i in range(self.ptr.nb_chapters):
+            ch = self.ptr.chapters[i]
+            result.append({
+                "id": ch.id,
+                "start": ch.start,
+                "end": ch.end,
+                "time_base": avrational_to_fraction(&ch.time_base),
+                "metadata": avdict_to_dict(ch.metadata, self.metadata_encoding, self.metadata_errors),
+            })
+        return result
 
 def open(
     file,
