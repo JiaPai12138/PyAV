@@ -1,0 +1,77 @@
+name: smoke_min
+on:
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+
+jobs:
+  style:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Linters
+        run: make lint
+
+  windows:
+    name: "py-${{ matrix.python }} lib-${{ matrix.ffmpeg }} ${{matrix.os}}"
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]
+        python: ["3.12", "3.13", "3.13t", "3.14", "3.14t"]
+        ffmpeg: ["min"]
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ matrix.python }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install numpy pillow pytest setuptools wheel Cython delvewheel
+
+    - name: Build
+      shell: bash
+      run: |
+        mkdir -p library_ffmpeg
+        python scripts/fetch-vendor.py --config-file scripts/ffmpeg-${{ matrix.ffmpeg }}.json library_ffmpeg
+        python scripts/comptime.py ${{ matrix.ffmpeg }}
+        mkdir -p av.libs
+        cp library_ffmpeg/bin/*.dll av.libs/ || true
+        python setup.py build_ext bdist_wheel --ffmpeg-dir=library_ffmpeg
+
+    - name: Repair wheel with delvewheel
+      run: |
+        delvewheel repair dist/*.whl --add-path av.libs -w wheelhouse/
+
+    - name: Upload FFmpeg
+      uses: actions/upload-artifact@v5
+      with:
+        name: "py-${{ matrix.python }} lib-${{ matrix.ffmpeg }} ${{ matrix.os }}"
+        path: wheelhouse/*.whl
+
+    - name: Create GitHub Release
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.event.release.tag_name }}
+        name: ${{ github.event.release.name }}
+        draft: false
+        prerelease: false
+        files: wheelhouse/*.whl
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
