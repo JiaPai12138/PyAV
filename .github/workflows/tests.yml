@@ -80,7 +80,7 @@ jobs:
     needs: [package-source, package-wheel]
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v7
         with:
           merge-multiple: true
           path: dist/
